@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>PayU IPN HMAC Signature</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify/dist/vuetify.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <style>
+
+        .source_string {
+            font-family: monospace;
+            width: 100%;
+            border: 1px solid black;
+            overflow: scroll;
+            white-space: nowrap;
+        }
+        .source_string .raw {
+            color: green;
+        }
+        .source_string .raw b {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <v-app>
+            <v-content>
+                <v-container>
+
+                    <h1>PayU IPN HMAC Signature Checker</h1>
+
+                    <p>
+                        PayU sends IPN notifications in order to confirm a new purchase with the Merchant system. These
+                        messages need to be validated using a HMAC MD5 signature built by both parties using a shared secret 
+                        key.
+                    </p>
+                    <p>
+                        Use the form below to debug your IPN messages. You need your Secret Key from PayU and a request message
+                        in a valid JSON format. The form is prefilled with a sample message.
+                    </p>
+                    <p>
+                        <b style="color: red;">Warning!</b>
+                        You can store your secret key and the json request to your local storage for easier debugging in the future,
+                        but be aware that this way you may expose them to attackers.
+                    </p>
+
+                    <v-layout>
+                        <v-flex>
+                            <v-text-field v-model="secret_key" box color="deep-purple" label="Secret Key"></v-text-field>
+                        </v-flex>
+                        <v-flex>
+                            <v-btn color="info" @click="save">Save to Local Storage</v-btn>
+                            <v-btn color="success" @click="purge">Purge Local Storage</v-btn>
+                        </v-flex>
+                    </v-layout>
+            
+            <v-textarea v-model="raw_json_request" auto-grow box color="deep-purple" label="JSON Request" rows="1"></v-textarea>
+            
+
+            <br><br>
+            <h3>Source String</h3>
+            <div class="source_string">
+                <span v-html="raw_source_string" class="raw"></span>
+                <br><br>
+                {{ source_string }}
+                <br><br>
+            </div>
+            <br>
+            <h3>HMAC Hash</h3>
+            <pre>{{ hash }}</pre>
+            <br>
+            <h3>Request Hash</h3>
+            <pre>{{ json_request.HASH }}</pre>
+            <br>
+            <h3>Original Request</h3>
+            <pre>{{ JSON.stringify(json_request, null, 2) }}</pre>
+
+                </v-container>
+            </v-content>
+        </v-app>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify/dist/vuetify.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+    <script>
+        new Vue({
+            el: '#app',
+            data: function() {
+                var key = localStorage.getItem('key') || 'AABBCCDDEEFF';
+                var request = localStorage.getItem('request') || '{"SALEDATE": "2004-06-01 12:22:09","REFNO": 1000037,"REFNOEXT": "","ORDERNO": "13","ORDERSTATUS": "COMPLETE","PAYMETHOD": "Wire transfer","FIRSTNAME": "John","LASTNAME": "Smith","IDENTITY_NO": "BV-667788","IDENTITY_ISSUER": "","COMPANY": "","REGISTRATIONNUMBER": "","FISCALCODE": "","CBANKNAME": "","CBANKACCOUNT": "","ADDRESS1": "101 Main Street, nr.20","ADDRESS2": "","CITY": "New York","STATE": "New York","ZIPCODE": "500365","COUNTRY": "United States of America","PHONE": "951-121-2121","FAX": "","CUSTOMEREMAIL": "johnsmith@email.com","FIRSTNAME_D": "John","LASTNAME_D": "Smith","COMPANY_D": "","ADDRESS1_D": "101 Main Street","ADDRESS2_D": "","CITY_D": "New York","STATE_D": "New York","ZIPCODE_D": "500365","COUNTRY_D": "United States of America","PHONE_D": "951-121-2121","IPADDRESS": "213.233.121.50","CURRENCY": "USD","IPN_PID": ["1"],"IPN_PNAME": ["Software program"],"IPN_PCODE": ["PM_11"],"IPN_INFO": [],"IPN_QTY": ["1"],"IPN_PRICE": ["29.00"],"IPN_VAT": ["0.00"],"IPN_VER": [],"IPN_DISCOUNT": ["0.00"],"IPN_PROMONAME": [],"IPN_DELIVEREDCODES": [],"IPN_TOTAL": ["29.00"],"IPN_TOTALGENERAL": "34.00","IPN_SHIPPING": "5.00","IPN_COMMISSION": "3.38","IPN_DATE": "20050303123434", "HASH": "8d2fcadc884e59140bdbf9a0b3630589"}';
+                return {
+                    secret_key: key,
+                    raw_json_request: request
+                }
+            },
+            methods: {
+                save: function () {
+                    localStorage.setItem('key', this.secret_key);
+                    localStorage.setItem('request', this.raw_json_request);
+                },
+                purge: function () {
+                    localStorage.clear();
+                },
+                url: function () {
+
+                }
+            },
+            computed: {
+                json_request: function() {
+                    try {
+                        parsed = JSON.parse(this.raw_json_request);
+                    } catch (e) {
+                        parsed = {
+                            "message": "Invalid JSON Format!"
+                        }
+                    }
+                    return parsed;
+                },
+                raw_source_string: function() {
+                    var source = '';
+                    for (var i in this.json_request) {
+                        if (i == 'HASH') {
+                            continue;
+                        }
+                        var value = this.json_request[i];
+                        if (Array.isArray(value)) {
+                            value = value[0];
+                        }
+                        if (value == null) {
+                            value = '';
+                        }
+                        value = String(value);
+                        source = source.concat('<b>' + value.length + '</b>', value);
+                    }
+                    return source;
+                },
+                source_string: function() {
+                    return this.raw_source_string.replace(/<[^>]+>/g, '');
+                },
+                hash: function ()
+                {
+                    return CryptoJS.enc.Hex.stringify(CryptoJS.HmacMD5(this.source_string, this.secret_key));
+                },
+            }
+        })
+    </script>
+</body>
+
+</html>
